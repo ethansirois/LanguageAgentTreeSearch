@@ -215,7 +215,9 @@ def generic_generate_internal_tests(
                     content=f"{test_generation_few_shot}\n\n[func signature]:\n{func_sig}\n\n[unit tests]:",
                 )
             ]
+            print(messages)
             output = model.generate_chat(messages=messages, max_tokens=1024)
+            print("raw output",output)
     else:
         prompt = f'{test_generation_completion_instruction}\n\nfunc signature:\n{func_sig}\nunit tests:'
         output = model.generate(prompt, max_tokens=1024)

@@ -83,6 +83,167 @@ def gather_context_from_tree(node: Node) -> Tuple[List[str], List[str]]:
     return accumulated_feedback[::-1], accumulated_reflection[::-1]
 
 
+<<<<<<< Updated upstream
+=======
+def answer(idx, item, max_iters, log_path, is_leetcode, n, exe, gen, model, print_v, num_items, success,
+           cur_func_impl):
+    print("running answers")
+    if is_leetcode:
+        tests_i = item['visible_tests']
+    else:
+        tests_i =  gen.internal_tests(item["prompt"], model, 1) # ["type(solveMathProblem()) == float"]
+        print("internal tests",tests_i)
+
+    while cur_func_impl is None:
+        cur_func_impl = gen.func_impl(item["prompt"], model, "simple")
+    root = Node(cur_func_impl)  # initial solution (for pass@1 metric)
+
+    # Lists for logging
+    reflections = []
+    implementations = []
+    test_feedback = []
+    is_solved = False
+
+    # first attempt
+
+    implementations.append(cur_func_impl)
+    assert isinstance(cur_func_impl, str)
+    is_passing, feedback, _ = exe.execute(cur_func_impl, tests_i)
+    test_feedback.append(feedback)
+    print(feedback)
+
+    # if solved, exit early
+    if is_passing:
+        print("is passing")
+        is_passing = exe.evaluate(
+            item["entry_point"], cur_func_impl, item["test"], timeout=10)
+        is_solved = is_passing  # seems like a meaningless line
+        success[idx] = 1
+        item["acc"] = is_passing
+        write_jsonl(log_path, [item], append=True)
+        # print(num_success)
+        # print_v(f'completed {idx+1}/{num_items}: acc = {round(num_success/(idx+1), 2)}')
+        return
+
+    reflection = gen.self_reflection(cur_func_impl, feedback, model)
+    reflections += [reflection]
+    root.test_feedback = feedback
+    root.reflection = reflection
+
+    for cur_iter in range(max_iters):
+        # Selection
+
+        node = root
+        trajectory = {
+            'solutions': [],
+            'feedbacks': []
+        }
+
+        while node.children:
+            node = node.best_child()
+            trajectory['solutions'].append(node.solution)
+
+        # Expansion
+        for _ in range(n):
+            new_solution = None
+            strategy = "mcts"
+            prev_func_impl = node.solution
+            feedback = node.test_feedback
+            reflection = node.reflection
+            acc_feedback, acc_reflection = gather_context_from_tree(node)
+
+            while new_solution is None:
+                new_solution = gen.func_impl(
+                    func_sig=item["prompt"],
+                    model=model,
+                    strategy=strategy,
+                    prev_func_impl=prev_func_impl,
+                    feedback=feedback,
+                    self_reflection=reflection,
+                    acc_feedback=acc_feedback,
+                    acc_reflection=acc_reflection
+                )
+
+            combined_context = "\nPrevious Trial\n\n" + new_solution
+
+            child = Node(new_solution, parent=node, context=combined_context, depth=node.depth + 1)
+            node.children.append(child)
+
+            # Simulation
+            reward_real = 0
+            for child in node.children:
+                is_passing_internal, feedback_internal, _ = exe.execute(child.solution, tests_i)
+                if not is_passing_internal:
+                    reflection = gen.self_reflection(child.solution, feedback_internal, model)
+                    reflections.append(reflection)
+                    child.reflection = reflection
+                    child.test_feedback = feedback_internal
+                    child.context += "\n\nPrevious Trial\n\n" + child.solution + "\n\nTest results: \n" + feedback_internal + "\n\nSelf-reflection: " + reflection
+                else:
+                    child.context += "\n\nPrevious Trial\n\n" + child.solution + "\n\nTest results: \n" + feedback_internal
+                    child.reflection = ""
+                    child.test_feedback = feedback_internal
+
+                if "Tested passed:" in feedback_internal:
+                    # Split at "Tests failed:" and get the part before it (which contains the passed tests)
+                    passed_section = feedback_internal.split("Tests failed:")[0]
+                    # Split at "Tested passed:" and get the part after it, then count the non-empty lines
+                    reward_internal = len(
+                        [line for line in passed_section.split("Tested passed:")[1].splitlines() if line.strip() != ''])
+                    reward_internal = reward_internal / len(tests_i)
+                else:
+                    reward_internal = 0
+                if is_passing_internal or cur_iter == max_iters - 1:
+                    is_passing = exe.evaluate(item["entry_point"], child.solution, item["test"], timeout=10)
+                    if is_passing:
+                        item["solution"] = child.solution
+                        is_solved = True
+                        reward_real = 1
+                        break
+
+            if is_solved:
+                break
+
+            print(reward_internal)
+            print(reward_real)
+            reward = reward_internal + reward_real
+            child.update(reward)
+
+            # Backpropagation
+            temp = child
+            while temp.parent:
+                temp = temp.parent
+                temp.update(reward)
+
+    # Choose the best solution after all iterations
+    if is_solved:
+        best_solution = item["solution"]
+    else:
+        best_solution = root.best_child_value().solution
+        item["solution"] = best_solution
+
+    is_passing, cur_feedback, _ = exe.execute(new_solution, tests_i)
+    test_feedback.append(cur_feedback)
+    is_passing = exe.evaluate(item["entry_point"], best_solution, item["test"], timeout=10)
+    if is_passing:
+        success[idx] = 1
+
+    reflections.append("MCTS reflections")
+    implementations.append(best_solution)
+
+    item["is_solved"] = is_passing
+    item["reflections"] = reflections
+    item["implementations"] = implementations
+    item["test_feedback"] = test_feedback
+    item["acc"] = is_passing  # round(num_success/(idx+1), 2)
+    # print("implementations",implementations)
+    write_jsonl(log_path, [item], append=True)
+
+    # print_v(f'completed {idx+1}/{num_items}: acc = {is_passing, 2)}')
+    # print_v(f'acc = {round(num_success/(idx+1), 2)}')
+
+
+>>>>>>> Stashed changes
 def run_mcts(
     dataset: List[dict],
     model_name: str,
@@ -107,10 +268,21 @@ def run_mcts(
         
         cur_func_impl = None
 
+<<<<<<< Updated upstream
         if is_leetcode:
             tests_i = item['visible_tests']
         else:
             tests_i = gen.internal_tests(item["prompt"], model, 4)
+=======
+    # with concurrent.futures.ThreadPoolExecutor() as executor:
+    #     futures = {executor.submit(answer, idx, item, max_iters, log_path, is_leetcode, n, exe, gen, model, print_v,
+    #                                num_items, success, cur_func_impl): item for idx, item in enumerate(dataset)}
+        
+
+    for idx, item in enumerate(dataset):
+        answer(idx, item, max_iters, log_path, is_leetcode, n, exe, gen, model, print_v,
+                                   num_items, success, cur_func_impl)
+>>>>>>> Stashed changes
 
         while cur_func_impl is None:
             cur_func_impl = gen.func_impl(item["prompt"], model, "simple")

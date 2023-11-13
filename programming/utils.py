@@ -32,6 +32,7 @@ def read_jsonl(path: str) -> List[dict]:
 
 
 def write_jsonl(path: str, data: List[dict], append: bool = False):
+    print("WRITING TO JSON!!!")
     with jsonlines.open(path, mode='a' if append else 'w') as writer:
         for item in data:
             writer.write(item)

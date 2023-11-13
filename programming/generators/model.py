@@ -1,12 +1,12 @@
 from typing import List, Union, Optional, Literal
 import dataclasses
+from openai import OpenAI
 
 from tenacity import (
     retry,
     stop_after_attempt,  # type: ignore
     wait_random_exponential,  # type: ignore
 )
-import openai
 
 MessageRole = Literal["system", "user", "assistant"]
 
@@ -34,7 +34,8 @@ def gpt_completion(
         temperature: float = 0.0,
         num_comps=1,
 ) -> Union[List[str], str]:
-    response = openai.Completion.create(
+    client = OpenAI()
+    response = client.chat.completions.create(
         model=model,
         prompt=prompt,
         temperature=temperature,
@@ -46,7 +47,7 @@ def gpt_completion(
         n=num_comps,
     )
     if num_comps == 1:
-        return response.choices[0].text  # type: ignore
+        return response.choices[0].message.content  # type: ignore
 
     return [choice.text for choice in response.choices]  # type: ignore
 
@@ -59,7 +60,8 @@ def gpt_chat(
     temperature: float = 0.0,
     num_comps=1,
 ) -> Union[List[str], str]:
-    response = openai.ChatCompletion.create(
+    client = OpenAI()
+    response = client.chat.completions.create(
         model=model,
         messages=[dataclasses.asdict(message) for message in messages],
         max_tokens=max_tokens,
@@ -106,7 +108,7 @@ class GPT4(GPTChat):
 
 class GPT35(GPTChat):
     def __init__(self):
-        super().__init__("gpt-3.5-turbo")
+        super().__init__("gpt-3.5-turbo-1106")
 
 
 class GPTDavinci(ModelBase):
